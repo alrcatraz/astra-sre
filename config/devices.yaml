@@ -1,0 +1,121 @@
+# astra-sre 设备清单
+# 仅包含用户自有基础设施，排除朋友的机器
+# 访问优先级：EasyTier > Tailscale > ZeroTier > LAN
+
+devices:
+  - name: vps-hk
+    role: 核心服务器
+    desc: Synapse + PostgreSQL + Nginx + Hermes Gateway + EasyTier hub
+    os: Debian 11 (迁移中)
+    ssh: root@10.20.4.10:2222
+    key: id_ed25519
+    networks:
+      easytier: 10.20.4.10
+      zerotier: 10.10.117.158
+      tailscale: 100.64.4.10
+    checks:
+      - systemd: [postgresql, matrix-synapse, nginx, sshd, easytier, tailscaled]
+      - port: [5432, 8008, 443, 22, 2222]
+      - disk_warn: 85
+      - disk_crit: 92
+
+  - name: vps-uk
+    role: 备份服务器
+    desc: AlmaLinux 9.6, 备份目标, not on Tailscale
+    os: AlmaLinux 9.6
+    ssh: root@10.10.4.11
+    key: id_ed25519
+    networks:
+      easytier: 10.20.4.11
+      zerotier: 10.10.4.11
+    checks:
+      - systemd: [sshd, easytier]
+      - disk_warn: 85
+      - disk_crit: 92
+
+  - name: ds425plus
+    role: NAS 存储
+    desc: Synology DS425+, 7TB/1.5T used, Docker+EasyTier+ZT+TS
+    os: DSM 5.10.55+
+    ssh: Alrcatraz@10.20.3.10
+    key: id_ed25519
+    networks:
+      easytier: 10.20.3.10
+      zerotier: 10.10.3.10
+      tailscale: 100.64.3.10
+    checks:
+      - systemd: [sshd]
+      - disk_warn: 85
+      - disk_crit: 92
+      - docker: true
+
+  - name: suset01
+    role: 便携跳板机 / 移动工作站
+    desc: X1 Tablet openSUSE Tumbleweed
+    os: openSUSE Tumbleweed
+    ssh: alrcatraz@10.20.2.14
+    key: id_ed25519_jump_star
+    networks:
+      easytier: 10.20.2.14
+      zerotier: 10.10.2.14
+      tailscale: 100.64.2.14
+    checks:
+      - systemd: [sshd, easytier, NetworkManager]
+      - disk_warn: 85
+      - disk_crit: 92
+
+  - name: homecentre01
+    role: 本机 / 本地常驻
+    desc: 运行 Hermes Agent + MCPs + SearXNG
+    os: openSUSE Tumbleweed
+    ssh: localhost
+    key: id_ed25519
+    networks:
+      easytier: 10.20.5.10
+      zerotier: 10.10.5.10
+      tailscale: 100.64.5.10
+    checks:
+      - systemd: [sshd, NetworkManager, easytier, tailscaled]
+      - disk_warn: 85
+      - disk_crit: 92
+      - port: [3333, 8080]
+
+  - name: susetlearn00
+    role: 桌面工作站
+    desc: 游戏本 openSUSE, 双系统 with Win11
+    os: openSUSE Tumbleweed
+    ssh: alrcatraz@192.168.0.20
+    key: id_ed25519
+    networks:
+      tailscale: 100.64.2.10
+      lan: 192.168.0.20
+    checks:
+      - systemd: [sshd, NetworkManager]
+      - disk_warn: 85
+      - disk_crit: 92
+
+  - name: fedoratg
+    role: 随身工作站
+    desc: Samsung Book5 Pro 360 USB SSD Fedora To Go
+    os: Fedora 44
+    ssh: alrcatraz@100.64.2.11
+    key: pending
+    networks:
+      tailscale: 100.64.2.11
+    checks:
+      - systemd: [sshd]
+      - disk_warn: 85
+      - disk_crit: 92
+
+  - name: openwrt
+    role: 路由器
+    desc: iStoreOS 21.02 N5000/4GB, 无 overlay
+    os: OpenWrt (iStoreOS 21.02)
+    ssh: root@192.168.0.1:22
+    key: pending
+    networks:
+      lan: 192.168.0.1
+    checks:
+      - port: [22, 80, 443, 53]
+      - disk_warn: 85
+      - disk_crit: 92
