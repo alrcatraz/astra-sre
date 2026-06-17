@@ -100,15 +100,13 @@ python3 scripts/learn.py --cron          # Silent mode (output only when new sug
 
 ### Fix Framework (sub-skills)
 
-Repair skills are loaded via Hermes Agent:
+Repair sub-skills implement the recipes defined in the phase3 design.
+Each is deployed as a Hermes Agent skill (`astra-sre-fix-<problem>`):
 
 | Skill | Level | Description |
 |:------|:-----:|:------------|
-| `astra-sre-fix-e2ee` | L2/L3 | E2EE daily repair & full recovery |
-| `astra-sre-restart-service` | L2/L3 | Service restarts (non-critical / critical) |
-| `astra-sre-fix-gfw` | L2 | GFW interference diagnosis & degradation |
+| `astra-sre-fix-restart-service` | L2/L3 | Service restarts (non-critical / critical) |
 | `astra-sre-fix-mcp` | L2 | MCP process audit & cleanup |
-| `astra-sre-fix-vps-recovery` | L2/L3 | VPS upgrade / rebuild recovery |
 
 ### Fix Level Definitions
 
