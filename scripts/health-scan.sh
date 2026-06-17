@@ -123,10 +123,10 @@ scan_device() {
     load_str=$(echo "$sys_out" | awk -F'load average:' '{print $2}' | xargs)
   fi
 
-  # ── Service checks ──
+  # ── Service checks (example defaults — customize per device in YAML config) ──
   local svc_out
   svc_out=$(ssh_run "$ssh_target" "$key" "
-    for svc in postgresql matrix-synapse nginx sshd easytier tailscaled NetworkManager; do
+    for svc in sshd cron nginx; do
       systemctl is-active \"\$svc\" 2>/dev/null && echo \"\$svc:active\" || echo \"\$svc:inactive\"
     done
   " 2>/dev/null) || true

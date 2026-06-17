@@ -67,13 +67,18 @@ No pip install required — scripts use Python stdlib only.
 Configure target devices in `config/devices.yaml`:
 
 ```yaml
-vps-hk:
-  host: 10.20.4.10
-  user: root
-  port: 2222
+devices:
+  - name: server-1
+    role: Primary server
+    ssh: user@your-server-ip
+    key: id_ed25519
+    checks:
+      - systemd: [sshd, nginx, postgresql]
+      - disk_warn: 85
+      - disk_crit: 92
 ```
 
-Copy from `config/devices.yaml.example` and edit.
+Copy from `config/devices.yaml.example` and edit. The example file contains a complete reference with all supported fields.
 
 ## Usage
 

@@ -74,22 +74,27 @@ def probe_triage(symptom: str = "") -> ProbeResult:
         return ProbeResult("triage", "error", f"triage 异常: {e}")
 
 
-def probe_gateway() -> ProbeResult:
-    """Check Gateway process, logs, and E2EE state."""
+def probe_gateway(gateway_service: str = "hermes-gateway") -> ProbeResult:
+    """Check a gateway/systemd service process and its logs.
+    
+    Args:
+        gateway_service: systemd service name (default: hermes-gateway).
+                         Change this in your env or fork for your specific service.
+    """
     recs = []
     details = []
 
     # Process
     r = subprocess.run(
-        ["systemctl", "--user", "is-active", "hermes-gateway"],
+        ["systemctl", "--user", "is-active", gateway_service],
         capture_output=True, text=True, timeout=5,
     )
     gw_status = r.stdout.strip()
-    details.append(f"  Gateway: {gw_status}")
+    details.append(f"  {gateway_service}: {gw_status}")
 
     if gw_status not in ("active", "activating"):
-        return ProbeResult("gateway", "error", f"Gateway 不在运行 ({gw_status})", details="\n".join(details),
-                          recommendations=["systemctl --user start hermes-gateway"])
+        return ProbeResult("gateway", "error", f"{gateway_service} not running ({gw_status})", details="\n".join(details),
+                          recommendations=[f"systemctl --user start {gateway_service}"])
 
     # Log tail — check for recent errors
     gw_log = os.path.join(HERMES_HOME, "logs", "gateway.log")
@@ -133,8 +138,8 @@ def probe_gateway() -> ProbeResult:
 
 
 def probe_services() -> ProbeResult:
-    """Check systemd service statuses."""
-    services = ["hermes-gateway", "postgresql", "searxng-core"]
+    """Check systemd service statuses (configurable — edit the list below for your stack)."""
+    services = ["sshd", "nginx", "postgresql"]  # ← customize for your environment
     details = []
     recs = []
 

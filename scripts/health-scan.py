@@ -286,6 +286,12 @@ def main():
         key = dev.get('key', '')
         checks = dev.get('checks', [])
 
+        # Build SSH target from separate ssh + ssh_port fields
+        if ssh_target != 'localhost':
+            port = dev.get('ssh_port')
+            if port and ':' not in ssh_target:
+                ssh_target = f"{ssh_target}:{port}"
+
         result, findings = scan_device(name, ssh_target, key, checks)
         device_results.append((name, result, findings))
         all_findings.extend(findings)

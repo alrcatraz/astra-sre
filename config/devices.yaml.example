@@ -1,22 +1,23 @@
-# astra-sre 设备清单（示例模板）
-# 请复制为 devices.yaml 并填入实际数据
+# astra-sre device inventory (example template)
+# Copy this file to devices.yaml and fill in your actual infrastructure.
 
 devices:
-  - name: example-server
-    role: 核心服务器
-    desc: 你的服务器描述
-    os: Ubuntu 24.04
+  - name: server-1
+    role: Primary server
+    desc: Your server description here
+    os: Debian 12
     ssh: user@your-server-ip
+    ssh_port: 22
     key: id_ed25519
     checks:
-      - systemd: [sshd, nginx]
+      - systemd: [sshd, nginx, postgresql]
       - port: [22, 80, 443]
       - disk_warn: 85
       - disk_crit: 92
 
-  - name: example-nas
-    role: 存储
-    desc: 你的 NAS 描述
+  - name: nas-1
+    role: Storage
+    desc: Your NAS description here
     os: DSM 7.x
     ssh: user@nas-ip
     checks:
