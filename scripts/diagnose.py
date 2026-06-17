@@ -52,7 +52,6 @@ def probe_triage(symptom: str = "") -> ProbeResult:
         r = subprocess.run(
             [sys.executable, TRIAGE, symptom, "--top", "3", "--json"],
             capture_output=True, text=True, timeout=TIMEOUT,
-            env={**os.environ, "ASTRA_DB_PASSWORD": os.environ.get("ASTRA_DB_PASSWORD", "")},
         )
         if r.returncode != 0:
             return ProbeResult("triage", "error", f"triage 执行失败: {r.stderr[:200]}")

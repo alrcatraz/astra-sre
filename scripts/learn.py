@@ -23,15 +23,10 @@ from datetime import datetime
 from typing import Optional
 
 # ── DB config ────────────────────────────────────────────────
-DB_CONFIG = {
-    "host": os.environ.get("ASTRA_DB_HOST", "127.0.0.1"),
-    "port": int(os.environ.get("ASTRA_DB_PORT", "5432")),
-    "dbname": os.environ.get("ASTRA_DB_NAME", "astra_kb"),
-    "user": os.environ.get("ASTRA_DB_USER", "astramcp"),
-    "password": os.environ.get("ASTRA_DB_PASSWORD", "astra_kb_2026"),
-}
+from kb_access import list_all, parse_tags
 
 SKILLS_DIR = os.path.expanduser("~/.hermes/skills/sre")
+INCIDENTS_KB = "sre_incidents"
 
 
 # ── Data ─────────────────────────────────────────────────────
@@ -66,27 +61,10 @@ class Incident:
 
 def fetch_incidents() -> list[Incident]:
     """Fetch all incidents from sre_incidents chunks."""
-    import psycopg2
-
-    sql = """
-        SELECT DISTINCT ON (chunks.title)
-            chunks.title, chunks.tags
-        FROM kb_sre_incidents.chunks
-        ORDER BY chunks.title, chunks.id
-    """
-
+    rows = list_all(INCIDENTS_KB)
     incidents = []
-    try:
-        conn = psycopg2.connect(**DB_CONFIG)
-        with conn.cursor() as cur:
-            cur.execute(sql)
-            for row in cur.fetchall():
-                tags = list(row[1]) if row[1] else []
-                incidents.append(Incident(title=row[0] or "", tags=tags))
-        conn.close()
-    except Exception as e:
-        print(f"❌ DB 查询失败: {e}", file=sys.stderr)
-        sys.exit(1)
+    for r in rows:
+        incidents.append(Incident(title=r["title"] or "", tags=parse_tags(r.get("tags", "[]"))))
     return incidents
 
 

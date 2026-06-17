@@ -10,145 +10,31 @@ Usage:
     ./triage.py --tag P1              # Filter by severity tag
 """
 import argparse
-import os
+import json
 import sys
-from dataclasses import dataclass, field
-from typing import Optional
 
-# ── DB config ────────────────────────────────────────────────
-DB_CONFIG = {
-    "host": os.environ.get("ASTRA_DB_HOST", "127.0.0.1"),
-    "port": int(os.environ.get("ASTRA_DB_PORT", "5432")),
-    "dbname": os.environ.get("ASTRA_DB_NAME", "astra_kb"),
-    "user": os.environ.get("ASTRA_DB_USER", "astramcp"),
-    "password": os.environ.get("ASTRA_DB_PASSWORD", "astra_kb_2026"),
-}
+from kb_access import search_kb, list_all, parse_tags
 
 INCIDENTS_KB = "sre_incidents"
 
 
-# ── Data ─────────────────────────────────────────────────────
-@dataclass
-class Match:
-    kb: str
-    title: str
-    content: str
-    score: float
-    source: Optional[str]
-    tags: list[str]
-
-    @property
-    def severity(self) -> str:
-        """Extract severity from tags (handles comma-joined strings)."""
-        all_tags = []
-        for t in self.tags:
-            if isinstance(t, str):
-                all_tags.extend([tag.strip().lower() for tag in t.split(",")])
-            else:
-                all_tags.append(str(t).strip().lower())
-        for t in all_tags:
-            if t in ("p1", "p2", "p3", "p0"):
-                return t.upper()
-        return "N/A"
-
-    def snippet(self, max_len: int = 300) -> str:
-        txt = self.content.replace("\n", " ").strip()
-        return txt[:max_len] + ("…" if len(txt) > max_len else "")
-
-    def summary(self) -> str:
-        sev_emoji = {"P1": "🔴", "P2": "🟠", "P3": "🟡"}.get(self.severity, "⚪")
-        return (
-            f"{sev_emoji} [{self.severity}] {self.title}\n"
-            f"   Score: {self.score:.3f}  |  Tags: {', '.join(self.tags[:5])}\n"
-            f"   {self.snippet(200)}\n"
-        )
+# ── Helpers ───────────────────────────────────────────────────
+def severity_from_tags(tags: list[str]) -> str:
+    """Extract severity from tags."""
+    for t in tags:
+        t = t.strip().lower()
+        if t in ("p1", "p2", "p3", "p0"):
+            return t.upper()
+    return "N/A"
 
 
-# ── FTS search ───────────────────────────────────────────────
-def build_tsquery(query: str) -> str:
-    tokens = []
-    for word in query.replace("'", "''").split():
-        word = word.strip().lower()
-        if len(word) > 1:
-            tokens.append(f"{word}:*")
-    return " & ".join(tokens) if tokens else "%"
+def severity_emoji(sev: str) -> str:
+    return {"P1": "🔴", "P2": "🟠", "P3": "🟡"}.get(sev, "⚪")
 
 
-def search_fts(kb_name: str, query: str, limit: int = 5) -> list[Match]:
-    """Search a single KB using PostgreSQL full-text search."""
-    import psycopg2
-
-    tsquery = build_tsquery(query)
-    if not tsquery or tsquery == "%":
-        return []
-
-    safe = kb_name.replace(" ", "_").lower()
-    sql = f"""
-        SELECT
-            ts_rank(chunks.search_vec, to_tsquery('simple', %s), 32) AS score,
-            ts_headline('simple', chunks.content, to_tsquery('simple', %s),
-                        'MaxWords=50, MinWords=20') AS headline,
-            chunks.id, chunks.title, chunks.content, chunks.source, chunks.tags
-        FROM kb_{safe}.chunks
-        WHERE chunks.search_vec @@ to_tsquery('simple', %s)
-        ORDER BY score DESC
-        LIMIT %s
-    """
-
-    results = []
-    try:
-        conn = psycopg2.connect(**DB_CONFIG)
-        with conn.cursor() as cur:
-            cur.execute(sql, (tsquery, tsquery, tsquery, limit))
-            for row in cur.fetchall():
-                results.append(Match(
-                    kb=kb_name,
-                    title=row[3] or "",
-                    content=row[4] or "",
-                    score=round(float(row[0]), 4),
-                    source=row[5],
-                    tags=list(row[6]) if row[6] else [],
-                ))
-        conn.close()
-    except Exception as e:
-        print(f"❌ DB 查询失败: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    return results
-
-
-def list_all(kb_name: str) -> list[Match]:
-    """List all incidents in a KB (no ranking)."""
-    import psycopg2
-
-    safe = kb_name.replace(" ", "_").lower()
-    sql = f"""
-        SELECT DISTINCT ON (chunks.title)
-            chunks.id, chunks.title, chunks.content, chunks.source, chunks.tags
-        FROM kb_{safe}.chunks
-        ORDER BY chunks.title, chunks.id
-    """
-
-    results = []
-    try:
-        conn = psycopg2.connect(**DB_CONFIG)
-        with conn.cursor() as cur:
-            cur.execute(sql)
-            for row in cur.fetchall():
-                results.append(Match(
-                    kb=kb_name,
-                    title=row[1] or "",
-                    content=row[2] or "",
-                    score=1.0,
-                    source=row[3],
-                    tags=list(row[4]) if row[4] else [],
-                ))
-        conn.close()
-    except Exception as e:
-        print(f"❌ DB 查询失败: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    return results
+def snippet(text: str, max_len: int = 300) -> str:
+    txt = text.replace("\n", " ").strip()
+    return txt[:max_len] + ("…" if len(txt) > max_len else "")
 
 
 # ── Main ─────────────────────────────────────────────────────
@@ -181,21 +67,25 @@ def main():
         seen = set()
         unique = []
         for inc in incidents:
-            if inc.title not in seen:
-                seen.add(inc.title)
+            if inc["title"] not in seen:
+                seen.add(inc["title"])
                 unique.append(inc)
 
         if args.tag:
             tag_filter = args.tag.upper()
-            unique = [i for i in unique if tag_filter in [t.upper().strip() for t in i.tags]]
+            unique = [
+                i for i in unique
+                if tag_filter in [t.upper().strip() for t in parse_tags(i.get("tags", "[]"))]
+            ]
 
         print(f"\n📚 sre_incidents — {len(unique)} 条事故记录\n")
         for i, inc in enumerate(unique, 1):
-            tags_str = ", ".join(inc.tags)
-            print(f"  {i}. {inc.severity} {inc.title}")
+            tags = parse_tags(inc.get("tags", "[]"))
+            sev = severity_from_tags(tags)
+            tags_str = ", ".join(tags)
+            print(f"  {i}. {sev} {inc['title']}")
             print(f"     Tags: {tags_str}")
             print()
-
         return
 
     # ── Search mode ──
@@ -203,28 +93,30 @@ def main():
         parser.print_help()
         sys.exit(1)
 
-    matches = search_fts(INCIDENTS_KB, args.query, args.top)
+    matches = search_kb(INCIDENTS_KB, args.query, args.top)
 
     if args.tag:
         tag_filter = args.tag.upper()
-        matches = [m for m in matches if tag_filter in [t.upper().strip() for t in m.tags]]
+        matches = [
+            m for m in matches
+            if tag_filter in [t.upper().strip() for t in parse_tags(m.get("tags", "[]"))]
+        ]
 
     if args.json:
-        import json
         print(json.dumps([
             {
-                "title": m.title,
-                "score": m.score,
-                "severity": m.severity,
-                "tags": m.tags,
-                "snippet": m.snippet(300),
-                "full_content": m.content,
+                "title": m["title"],
+                "score": m["score"],
+                "severity": severity_from_tags(parse_tags(m.get("tags", "[]"))),
+                "tags": parse_tags(m.get("tags", "[]")),
+                "snippet": snippet(m.get("content", ""), 300),
+                "full_content": m.get("content", ""),
             }
             for m in matches
         ], ensure_ascii=False, indent=2))
         return
 
-    # Markdown output (for agent consumption or human reading)
+    # Markdown output
     if not matches:
         print(f"\n🔍 未在 sre_incidents 中找到与「{args.query}」匹配的案例\n")
         return
@@ -232,10 +124,12 @@ def main():
     print(f"\n🔍 搜索「{args.query}」— 找到 {len(matches)} 个匹配案例\n")
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
     for i, m in enumerate(matches, 1):
-        print(f"### {i}. {m.severity} {m.title}")
-        print(f"**相似度**: {m.score:.3f}")
-        print(f"**标签**: {', '.join(m.tags)}")
-        print(f"**摘要**: {m.snippet(200)}")
+        tags = parse_tags(m.get("tags", "[]"))
+        sev = severity_from_tags(tags)
+        print(f"### {i}. {sev} {m['title']}")
+        print(f"**相似度**: {m['score']:.3f}")
+        print(f"**标签**: {', '.join(tags)}")
+        print(f"**摘要**: {snippet(m.get('content', ''), 200)}")
         print()
 
     print(f"ℹ️  完整 incident 内容可通过 kb_search('sre_incidents', '{args.query}') 获取\n")
