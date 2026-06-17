@@ -50,7 +50,7 @@ Astra SRE provides a unified operational layer for a fleet of self-hosted server
 ## Prerequisites
 
 - Python 3.11+
-- SSH key access to target devices (see `config/devices.yaml`)
+- SSH key access to target devices (see `config/devices.yaml.example`)
 - Hermes Agent (recommended for cron scheduling)
 
 ## Setup
@@ -64,21 +64,14 @@ No pip install required — scripts use Python stdlib only.
 
 ## Configuration
 
-Configure target devices in `config/devices.yaml`:
+Target devices are configured by copying the example file:
 
-```yaml
-devices:
-  - name: server-1
-    role: Primary server
-    ssh: user@your-server-ip
-    key: id_ed25519
-    checks:
-      - systemd: [sshd, nginx, postgresql]
-      - disk_warn: 85
-      - disk_crit: 92
+```bash
+cp config/devices.yaml.example config/devices.yaml
+# then edit config/devices.yaml
 ```
 
-Copy from `config/devices.yaml.example` and edit. The example file contains a complete reference with all supported fields.
+The example (`config/devices.yaml.example`) contains a complete reference with all supported fields:
 
 ## Usage
 
@@ -89,19 +82,14 @@ python3 scripts/health-scan.py          # Markdown report
 python3 scripts/health-scan.py --json   # Machine-readable
 ```
 
-### Diagnose an Incident
+### Investigate an Incident
 
 ```bash
-bash scripts/diagnose.sh                                    # 5-way parallel
-bash scripts/diagnose.sh --mode network,gateway --symptom "sync error"
+python3 scripts/triage.py "service X is failing"   # Search past incidents
+python3 scripts/triage.py --list                    # List all recorded incidents
 ```
 
-### Search Historical Incidents
-
-```bash
-python3 scripts/triage.py "E2EE cannot decrypt"
-python3 scripts/triage.py --list          # List all recorded incidents
-```
+Combined with health scan for current system state:
 
 ### Auto-Suggest New Skills
 
@@ -145,12 +133,12 @@ Scripts use a shared SQLite access layer (`scripts/kb_access.py`) that connects 
 
 ### Knowledge Base: `sre_incidents`
 
-Stores incident records (root cause analysis, diagnostics, fixes, prevention tips). Currently 15 records covering:
+Stores incident records (root cause analysis, diagnostics, fixes, prevention tips). Currently 2 example records covering:
 
-- E2EE stale OTK repair
-- VPS upgrade & data recovery
-- WAN outage diagnosis (GFW interference)
-- Service restart patterns
+- MCP process accumulation (redundant service memory leak)
+- Health check false positive (external dependency cascading failure)
+
+See `scripts/triage.py` for searching past incidents.
 
 ## Maintenance
 
@@ -165,8 +153,7 @@ Stores incident records (root cause analysis, diagnostics, fixes, prevention tip
 | File | Description |
 |:-----|:------------|
 | `references/phase3-design.md` | Fix framework design (locks, probes, escalation) |
-| `references/format-convention.md` | Project format conventions |
-
+|
 ## Related
 
 - [astra-knowledge-base-mcp](https://github.com/alcatrz/astra-knowledge-base-mcp) — incident knowledge storage

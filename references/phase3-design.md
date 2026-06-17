@@ -1,150 +1,150 @@
-# astra-sre Phase 3 — 自动修复框架设计
+# astra-sre Phase 3 — Automated Repair Framework Design
 
-> 版本: 1.0
-> 日期: 2026-06-07
-> 状态: 设计定稿
+> Version: 1.0
+> Date: 2026-06-07
+> Status: Design Finalised
 
 ---
 
-## 核心原则
+## Core Principles
 
-不二选一，渐进过渡：先写 recipe（带触发条件和决策点标记），预留 auto-safe 扩展空间。信任建立后再逐步放开安全操作的自动执行。
+No binary choice — gradual transition. First write recipes (with trigger conditions and decision-point markers), reserving space for auto-safe expansion. Once trust is established, progressively relax the manual gates on safe operations.
 
-## 修复等级（L1/L2/L3）
+## Repair Levels (L1/L2/L3)
 
-按**影响面**而非操作本身来分级：
+Classify by **blast radius**, not by the operation itself:
 
-| 等级 | 定义 | 示例 | 执行策略 |
-|:----:|:----|:-----|:--------|
-| **L1** 无感修复 | 用户完全感知不到，无服务影响 | 改配置、清缓存、重发通知 | ✅ 完全自动执行 |
-| **L2** 有感但无风险 | 影响短暂或对非关键服务 | 重启非关键服务、跑只读诊断脚本 | ✅ 自动执行 + 事后通知你 |
-| **L3** 有风险或不可逆 | 可能导致数据丢失或服务中断 | 删数据、改 token、重建服务、重启关键服务 | 🛑 必须你批准 |
+| Level | Definition | Example | Execution Strategy |
+|:-----:|:-----------|:--------|:-------------------|
+| **L1** Transparent Repair | User is completely unaware, no service impact | Config changes, cache clears, notification retries | ✅ Fully automatic |
+| **L2** Noticeable but Safe | Brief impact or affects non-critical services | Restart non-critical service, run read-only diagnostics | ✅ Automatic + notify afterwards |
+| **L3** Risky or Irreversible | Potential data loss or service interruption | Delete data, rotate tokens, rebuild service, restart critical service | 🛑 Requires your approval |
 
-## 修复流程
-
-```
-出问题 ──→ diagnose.sh 并行诊断
-              │
-              ▼
-        查 sre_incidents ──→ 有匹配？
-              │                    │
-            没有                  有
-              │                    │
-              ▼                    ▼
-         找你一起看          判断修复级别
-         排查+修复              │
-              │           ┌─────┼─────┐
-              │           │     │     │
-              │          L1   L2   L3
-              │        自动  自动+  找你
-              │        执行  通知  确认
-              │           │     │     │
-              │           └─────┼─────┘
-              │                 │
-              │           验证探针 ← 关键！
-              │           │       │
-              │         正常    更糟
-              │           │       │
-              │          ✅   回滚/通知
-              │
-              ▼
-       记录到 sre_incidents
-              │
-       同一标签出现两次？──→ learn.py 建议固化到 sub-skill
-```
-
-## 验证探针
-
-每个自动修复步骤后必须紧跟验证：
-
-- 复用 `diagnose.sh` 的单个 probe（如 `--mode gateway`）
-- 对比修复前后的状态
-- 如果修复后的状态比修复前更差 → 自动触发 **回滚机制**或**紧急通知**
-
-## 修复锁
-
-同一类问题的修复加锁（按标签）。
-
-### 锁的实现
+## Repair Flow
 
 ```
-锁文件: /tmp/astra-sre-lock-<tag>.lock
-内容:   PID + 锁定时间（秒级时间戳）
+Incident ──→ health-scan.py parallel diagnostics
+                  │
+                  ▼
+            Query sre_incidents ──→ Match found?
+                  │                        │
+                No                        Yes
+                  │                        │
+                  ▼                        ▼
+          Collaborate on              Determine repair level
+          investigation                   │
+                  │              ┌────────┼────────┐
+                  │              │        │        │
+                  │             L1       L2       L3
+                  │           Auto     Auto +   Require
+                  │          Execute   Notify   Approval
+                  │              │        │        │
+                  │              └────────┼────────┘
+                  │                       │
+                  │              Verification Probe ← Critical!
+                  │              │              │
+                  │            Healthy        Worse
+                  │              │              │
+                  │             ✅         Rollback/Notify
+                  │
+                  ▼
+          Log to sre_incidents
+                  │
+        Same tag appears twice? ──→ learn.py suggests sub-skill
 ```
 
-### 加锁/解锁逻辑
+## Verification Probes
+
+Every automatic repair step must be followed immediately by verification:
+
+- Reuse a single probe from `health-scan.py` (e.g. `--mode gateway`)
+- Compare state before and after repair
+- If post-repair state is worse than pre-repair → trigger **automatic rollback** or **emergency notification**
+
+## Repair Locks
+
+Prevent concurrent repairs on the same class of issue (keyed by tag).
+
+### Lock Implementation
 
 ```
-加锁时:
-  1. 锁文件存在？
-     ├─ 否 → 创建锁（写入当前 PID + 时间戳）→ 获得锁 ✅
-     └─ 是 → 读取锁内容
-              ├─ PID 仍存活 → 被其他修复持有，排队 ⏳
-              └─ PID 已死  → 残余锁！清除旧锁，获取新锁 ✅
-
-解锁时:
-  清除锁文件（无论成功失败都要执行）
+Lock file: /tmp/astra-sre-lock-<tag>.lock
+Content:   PID + lock timestamp (second-granularity)
 ```
 
-### 关键设计决策
+### Lock/Unlock Logic
 
-- **PID 存活检测**用 `kill -0 <PID>`（不发送信号，只检测进程是否存在）
-- **没有硬超时** —— 修复任务可能跑几个小时（如 `zypper dup`、全量 E2EE 恢复），只要 PID 活着锁就有效
-- **残余锁自动清理** —— 唯一判断标准：PID 死了就是残余锁，不管锁文件是 1 分钟前还是 1 天前创建的
-- **锁龄监控（可选，非强制）** —— 锁龄超过 30 分钟时在日志中记录一条提示，方便排查"是不是卡住了"，但不强制解锁
+```
+Acquiring lock:
+  1. Does the lock file exist?
+     ├─ No  → Create lock (write current PID + timestamp) → Acquired ✅
+     └─ Yes → Read lock content
+              ├─ PID still alive → Held by another repair, queue ⏳
+              └─ PID is dead    → Stale lock! Remove old lock, acquire new ✅
 
-## Sub-skill 模板
+Releasing lock:
+  Remove lock file (must execute regardless of success or failure)
+```
 
-每个修复子 skill 应包含以下字段：
+### Key Design Decisions
+
+- **PID liveliness check** uses `kill -0 <PID>` (sends no signal, only checks whether the process exists)
+- **No hard timeout** — repair tasks may run for hours (e.g. `zypper dup`, full E2EE recovery). As long as the PID is alive, the lock is valid
+- **Automatic stale lock cleanup** — the only criterion: if the PID is dead, the lock is stale, regardless of whether it was created 1 minute or 1 day ago
+- **Lock age monitoring (optional, non-mandatory)** — log a hint when lock age exceeds 30 minutes to help debug "is it stuck?" scenarios, but do not force-unlock
+
+## Sub-skill Template
+
+Each repair sub-skill should contain the following fields:
 
 ```yaml
 name: astra-sre-fix-<problem>
-level: L1|L2|L3          # 修复等级
-triggers:                 # 触发条件（diagnose.sh 输出匹配）
+level: L1|L2|L3            # Repair level
+triggers:                   # Trigger conditions (matched against health-scan.py output)
   - <probe>: <pattern>
-safety:                   # 安全说明
-  rollback: <如何回滚>
-  risks: [<风险列表>]
-steps:                    # 修复步骤
-  - <step> [auto|gate]    # auto=自动, gate=需你确认
-verify: <验证探针>
+safety:                     # Safety notes
+  rollback: <how to roll back>
+  risks: [<list of risks>]
+steps:                      # Repair steps
+  - <step> [auto|gate]      # auto = automatic, gate = requires your approval
+verify: <verification probe>
 ```
 
-## 已有 sub-skill 评估
+## Existing Sub-skill Assessment
 
-| Sub-skill | 当前等级 | 建议等级 | 理由 |
-|:----------|:--------:|:--------:|:-----|
-| astra-sre-fix-e2ee | L2/L3 ✅ | L2/L3 | L2: 重新共享密钥（e2ee-repair-keys.py、e2ee-request-keys.py）。L3: 完全恢复（DB 修改、token 轮换、crypto.db 删除）|
-| astra-sre-restart-service | L2/L3 ✅ | L2/L3 | 非关键服务重启 L2，关键服务（Gateway/PostgreSQL）重启 L3 |
-| full-e2ee-recovery-after-server-rebuild | L1/L2/L3 ✅ | L1/L2/L3 | L1: set presence、verify。L2: 新 token、启动 Gateway。L3: 删 crypto.db、改 .env、用户操作 |
+| Sub-skill | Current Level | Suggested Level | Rationale |
+|:----------|:-------------:|:---------------:|:----------|
+| astra-sre-fix-e2ee | L2/L3 ✅ | L2/L3 | L2: Re-share keys (e2ee-repair-keys.py, e2ee-request-keys.py). L3: Full recovery (DB modification, token rotation, crypto.db deletion) |
+| astra-sre-restart-service | L2/L3 ✅ | L2/L3 | Restarting non-critical services: L2. Restarting critical services (Gateway/PostgreSQL): L3 |
+| full-e2ee-recovery-after-server-rebuild | L1/L2/L3 ✅ | L1/L2/L3 | L1: Set presence, verify. L2: New token, start Gateway. L3: Delete crypto.db, modify .env, user operations |
 
-## 核心 SRE 基础设施（已纳入 astra-sre）
+## Core SRE Infrastructure (included in astra-sre)
 
-| Skill | 原分类 | 在 SRE 中的角色 | 说明 |
-|:------|:------:|:---------------|:-----|
-| service-inventory | devops | **数据层** — 服务注册表 + 健康历史 | `healthcheck.py` 和 `diagnose.sh` 的底层依赖。`mgmt.services` 表管理所有服务状态 |
-| infrastructure-device-inventory | devops | **资产层** — 设备清单 + 组网拓扑 | `devices.yaml` 的数据来源。8 台设备的 SSH 路径、组网地址、访问优先级 |
+| Skill | Original Category | Role in SRE | Notes |
+|:------|:-----------------:|:------------|:------|
+| service-inventory | devops | **Data layer** — service registry + health history | Underlying dependency for `healthcheck.py` and `health-scan.py`. `mgmt.services` table manages all service states |
+| infrastructure-device-inventory | devops | **Asset layer** — device inventory + overlay topology | Data source for `devices.yaml.example`. SSH paths, overlay addresses, and access priorities for all devices |
 
-## 外部引用的 playbook（保持独立）
+## External Playbooks Referenced (maintained independently)
 
-| Skill | 原分类 | 与 SRE 的关系 | 优先级 |
-|:------|:------:|:-------------|:-----:|
-| server-restart-recovery | devops | 服务器重启手册，含 E2EE 恢复交叉引用 | 🟡 |
-| server-health-audit | devops | 健康审计，diagnose.sh 的补充 | 🟡 |
-| crash-marker-pattern | devops | 看门狗通知模式 | 🟢 |
-| pre-upgrade-server-backup | devops | VPS 升配备份流程 | 🟢 |
-| matrix-gateway-setup | devops | Gateway 部署 + E2EE 初始设置 | 🟢 |
+| Skill | Original Category | Relationship to SRE | Priority |
+|:------|:-----------------:|:--------------------|:--------:|
+| server-restart-recovery | devops | Server restart manual, with cross-references to E2EE recovery | 🟡 |
+| server-health-audit | devops | Health audit, supplement to `health-scan.py` | 🟡 |
+| crash-marker-pattern | devops | Watchdog notification pattern | 🟢 |
+| pre-upgrade-server-backup | devops | VPS upgrade backup procedure | 🟢 |
+| matrix-gateway-setup | devops | Gateway deployment + initial E2EE setup | 🟢 |
 
-## 外部修复经验记录
+## External Incident Intake
 
-在 SRE 框架外发生的修复，通过以下方式进入 sre_incidents：
+Repairs performed outside the SRE framework enter `sre_incidents` through the following paths:
 
-| 场景 | 触发 | 我的行为 |
-|:-----|:-----|:---------|
-| 我们一起排查修好 | 我说"搞定了"之后 | 主动问"要记进 sre_incidents 吗？" |
-| 你修好了告诉我 | 你说修好了 | 追问根因，判断是否值得记，问你要不要入库 |
-| 同事/他人的经验 | 你说"这个你收一下"或"这个你看看" | 提取关键信息，写入 sre_incidents |
-| 确认记录 | 你说"可以"/"好"/"嗯" | 执行写入 |
-| 跳过 | 你说"不用"/"没必要" | 不记 |
+| Scenario | Trigger | My Behaviour |
+|:---------|:--------|:-------------|
+| We investigate and fix together | "Done" declared by me | Proactively ask: "Shall I log this in sre_incidents?" |
+| You fix and tell me | You say it's fixed | Ask for root cause, assess whether it's worth recording, ask if you'd like it stored |
+| Colleague/third-party experience | You say "store this" or "look at this" | Extract key information and write to sre_incidents |
+| Confirmed recording | Your consent ("yes"/"sure"/"ok") | Execute the write |
+| Skip | You say "not needed" / "skip" | Do not record |
 
-> 不需要特定关键词或 emoji。我来承担识别和提问的责任，你只需要像平常一样说话。
+> No specific keywords or emoji required. I take responsibility for identifying and asking — you just talk as you normally would.
