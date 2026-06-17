@@ -60,7 +60,12 @@ git clone https://github.com/alrcatraz/astra-sre.git
 cd astra-sre
 ```
 
-No pip install required — scripts use Python stdlib only.
+No separate pip install required. Dependencies are managed via uv:
+
+```bash
+pip install uv  # if not already installed
+uv sync
+```
 
 ## Configuration
 

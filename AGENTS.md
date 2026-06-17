@@ -14,7 +14,7 @@ For AI agents consuming this component. Humans can skip to [README](README.md).
 
 ## Dependencies
 
-- Python 3.11+ (stdlib only — no pip packages required)
+- Python 3.11+
 - SSH key access to target devices (as configured in `config/devices.yaml.example`)
 - Data layer: SQLite via `scripts/kb_access.py` (reads `$ASTRA_KB_PATH`, default `~/.astra/knowledge-base.db`)
 
