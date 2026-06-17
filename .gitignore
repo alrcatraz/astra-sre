@@ -1,0 +1,22 @@
+# ── Base (always) ──────────────────────────────────
+.env
+*.local
+.DS_Store
+*.swp
+*.swo
+*~
+
+# ── Python ─────────────────────────────────────────
+__pycache__/
+*.pyc
+.venv/
+.python-version
+*.db
+
+# ── IDE / Editor ───────────────────────────────────
+.idea/
+.vscode/
+*.code-workspace
+
+# ── OS ─────────────────────────────────────────────
+Thumbs.db

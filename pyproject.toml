@@ -1,0 +1,6 @@
+[project]
+name = "astra-sre"
+version = "0.1.0"
+description = "Unified SRE coordination layer for multi-node infrastructure — health scanning, diagnostics, auto-repair, and learning."
+requires-python = ">=3.11"
+dependencies = []
