@@ -134,6 +134,12 @@ Repair locks use PID files at `/tmp/astra-sre-lock-<tag>.lock`:
 
 Scripts use a shared SQLite access layer (`scripts/kb_access.py`) that connects to the same database as [astra-knowledge-base-mcp](https://github.com/alcatrz/astra-knowledge-base-mcp). Set via `$ASTRA_KB_PATH` (default: `~/.astra/knowledge-base.db`).
 
+## Dependencies
+
+| Repository | Resource | Required | Purpose |
+|:-----------|:---------|:--------:|:--------|
+| [astra-knowledge-base-mcp](https://github.com/alcatrz/astra-knowledge-base-mcp) | Shared SQLite database via `ASTRA_KB_PATH` | Recommended | Incident data layer — `health-scan.py`, `triage.py`, and `learn.py` share the same DB schema |
+
 ### Knowledge Base: `sre_incidents`
 
 Stores incident records (root cause analysis, diagnostics, fixes, prevention tips). Currently 2 example records covering:
@@ -166,11 +172,30 @@ See `scripts/triage.py` for searching past incidents.
 
 MIT — see [LICENSE](LICENSE).
 
-> CI/CD: coming soon — see [astra-aiagent-infra](https://github.com/alcatrz/astra-aiagent-infra) for ecosystem-wide pipeline plans.
+> CI/CD: coming soon — see [astra-aiagent-infra](https://github.com/alrcatraz/astra-aiagent-infra) for ecosystem-wide pipeline plans.
 
 ---
 
-<p align="center">
+## 中文版
+
+### 概述
+
+Astra SRE 为自建服务器和服务集群（8 台设备，覆盖 VPS、NAS、笔记本、路由器）提供统一运维层。采用分层架构：
+
+1. **Plan（计划）** — 每日全设备健康扫描
+2. **Diagnose（诊断）** — 基于症状的事故搜索 + 五路并行诊断
+3. **Fix（修复）** — 带升级策略（L1–L3）的自动修复框架
+4. **Learn（学习）** — 两次触发模式检测 → 自动建议新 skill
+
+### 依赖关系
+
+| 仓库 | 资源 | 必须 | 用途 |
+|:-----|:-----|:----:|:-----|
+| [astra-knowledge-base-mcp](https://github.com/alcatrz/astra-knowledge-base-mcp) | 通过 `ASTRA_KB_PATH` 共享 SQLite 数据库 | 推荐 | 事故数据层 — `health-scan.py`、`triage.py`、`learn.py` 共用同一 DB |
+
+---
+
+&lt;p align=&quot;center&quot;&gt;
   <a href="https://star-history.com/#alcatrz/astra-sre&Date">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=alcatrz/astra-sre&type=Date&theme=dark" />

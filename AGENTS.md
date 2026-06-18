@@ -14,9 +14,9 @@ For AI agents consuming this component. Humans can skip to [README](README.md).
 
 ## Dependencies
 
-- Python 3.11+
-- SSH key access to target devices (as configured in `config/devices.yaml.example`)
-- Data layer: SQLite via `scripts/kb_access.py` (reads `$ASTRA_KB_PATH`, default `~/.astra/knowledge-base.db`)
+- **Runtime:** Python 3.11+
+- **Access:** SSH key access to target devices (as configured in `config/devices.yaml.example`)
+- **Ecosystem:** [astra-knowledge-base-mcp](https://github.com/alcatrz/astra-knowledge-base-mcp) — shared SQLite database via `$ASTRA_KB_PATH` (default `~/.astra/knowledge-base.db`). `health-scan.py`, `triage.py`, and `learn.py` all share this data layer.
 
 ## Agent Workflows
 
